@@ -11,8 +11,8 @@ The app guides participants through the **entire study flow**, including informe
 ### 1. Clone the Repository
 
 ```bash
-git clone <your-repo-url>
-cd <your-repo-name>
+git clone https://github.com/KentFredo/XUI_Study
+cd <to_the_folder>
 ```
 
 ### 2. Create and Activate a Virtual Environment
