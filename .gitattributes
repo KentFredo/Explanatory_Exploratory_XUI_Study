@@ -1,0 +1,5 @@
+#Resolving Git line ending issues in containers (resulting in many modified files)
+#Prevent large number of modified files (that have no differences aside from their line endings) due to Windows and Linux using different default line endings by disabling line ending conversion using a .gitattributes file
+text=auto eol=lf
+*.{cmd,[cC][mM][dD]} text eol=crlf
+*.{bat,[bB][aA][tT]} text eol=crlf
