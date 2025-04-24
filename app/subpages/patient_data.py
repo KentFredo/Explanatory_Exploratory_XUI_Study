@@ -1,29 +1,26 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from components.trend_graph import generate_trend_graph
 from components.patient_details import create_patient_tile
 
 
 def display_patient_data():
-    # Reduce the spacing at the top of the page
-    st.markdown(
-        """
-        <style>
-        /* Override the padding of the main content container */
-        .stMainBlockContainer {
-            padding-top: 60px !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
 
-    def build_scores_box(score_name, score_value, score_max_value):
-        st.metric(
-            label=score_name,
-            value=f"{score_value}/{score_max_value}",
-            help=f"Maximum Value: {score_max_value}",
+    def build_scores_box(score_name, score_value, score_max_value, help_text=None):
+        # Display the caption with the score name and tooltip help text
+        st.caption(score_name, help=help_text)
+
+        # Format the value so the score_value is larger and the '/score_max_value' is gray and smaller
+        formatted_value = (
+            # The main score value in a larger, bold font
+            f"<span style='font-size:2em; font-weight:bold;'>{score_value}</span> "
+            # Gray and smaller max value
+            f"<span style='color: grey; font-size: 1em;'>/{score_max_value}</span>"
         )
+        # Wrap the formatted value in a div with a negative margin to reduce the space
+        st.markdown(
+            f"<div style='margin-top: -30px; margin_bottom: 10px;'>{formatted_value}</div>", unsafe_allow_html=True)
 
     def build_diagnosis_badges(diagnosis_data):
         badges = ""
@@ -84,9 +81,10 @@ def display_patient_data():
                 unsafe_allow_html=True,
             )
         diagnosis_header_col, diagnois_badge_col = st.columns(
-            [1, 2], gap="small")
+            [1, 1.5], gap="small")
         with diagnosis_header_col:
-            st.caption("Category:")
+            st.caption("Diagnosis Group:",
+                       help="Grouped by the affected system or clinical category (e.g., Pulmonary, Renal, Cardiovascular, Other).")
         with diagnois_badge_col:
             diagnosis_badges = build_diagnosis_badges(
                 st.session_state.patient.diagnosis)
@@ -100,9 +98,10 @@ def display_patient_data():
             """,
             unsafe_allow_html=True
         )
-        vent_header_col, vent_val_col = st.columns([1, 2], gap="small")
+        vent_header_col, vent_val_col = st.columns([1, 1.5], gap="small")
         with vent_header_col:
-            st.caption("Ventilated:")
+            st.caption(
+                "Ventilated:", help="If the patient was ventilated within the first 24 hours of ICU admission.")
         with vent_val_col:
             ventilated = st.session_state.patient.clinical_data.get(
                 "vent")
@@ -118,15 +117,31 @@ def display_patient_data():
         left_scores_col, right_scores_col = st.columns(2)
         with left_scores_col:
             build_scores_box(
-                "SOFA", int(st.session_state.patient.scores['sofa']), 20)
+                "SOFA",
+                int(st.session_state.patient.scores['sofa']),
+                20,
+                help_text="**Sequential Organ Failure Assessment:**  \nEvaluates the function of six organ systems (respiratory, coagulation, hepatic, cardiovascular, neurological, and renal). Higher scores indicate more severe organ dysfunction.  \n\nThis score is based on the most abnormal values recorded during the first 24 hours after ICU admission."
+            )
             build_scores_box(
-                "GCS", int(st.session_state.patient.scores['mingcs']), 15)
+                "GCS",
+                int(st.session_state.patient.scores['mingcs']),
+                15,
+                help_text="**Glasgow Coma Scale:**  \nAssesses a patient's level of consciousness based on eye, verbal, and motor responses. Lower scores correlate with greater impairment.  \n\nThis score is determined from the lowest value measured in the first 24 hours after ICU admission."
+            )
 
         with right_scores_col:
             build_scores_box(
-                "SIRS", int(st.session_state.patient.scores['sirs']), 5)
-            build_scores_box("Elixhauser",
-                             int(st.session_state.patient.scores['elixhauser_hospital']), 10)
+                "SIRS",
+                int(st.session_state.patient.scores['sirs']),
+                5,
+                help_text="**Systemic Inflammatory Response Syndrome:**  \nMeasures the body's inflammatory response using key vital signs and white blood cell count. A higher score suggests a stronger systemic response.  \n\nThis value is derived from the most abnormal results during the first 24 hours after ICU admission."
+            )
+            build_scores_box(
+                "Elixhauser",
+                int(st.session_state.patient.scores['elixhauser_hospital']),
+                10,
+                help_text="**Elixhauser Comorbidity Index:**  \nSummarizes the burden of comorbid conditions from administrative data to help predict patient outcomes and potential complications.  \n\nThis score reflects the severest abnormalities noted in the first 24 hours after ICU admission."
+            )
 
     with infection_col:
         with st.container():
@@ -142,7 +157,7 @@ def display_patient_data():
 
             with infection_time_header_col:
                 st.caption(
-                    "Infection Time:")
+                    "Infection Time:", help="Days elapsed from ICU admission until the suspected infection was identified.")
 
             with infection_time_col:
                 st.markdown(
@@ -160,7 +175,8 @@ def display_patient_data():
             specimen_header_col, specimen_col = st.columns([1, 1])
             with specimen_header_col:
                 st.caption(
-                    "Specimen:")
+                    "Specimen:", help="A biological sample taken (e.g., blood, tissue, urine) collected from a patient for analysis and diagnostic testing.")
+
             with specimen_col:
                 specimen_badges = build_specimen_badges(
                     st.session_state.patient.specimen)
@@ -181,7 +197,7 @@ def display_patient_data():
                     st.markdown(f":grey-badge[{blood_culture_text}]")
 
     # Build the 2nd row of values on the page
-    lab_table_col, trends_col = st.columns([3, 3], border=True)
+    lab_table_col, trends_col = st.columns([3.2, 2.8], border=True)
 
     with lab_table_col:
         with st.container(border=False):
@@ -197,54 +213,114 @@ def display_patient_data():
                 if lab_df.index.dtype == 'object':
                     lab_df.index = lab_df.index.str.title()
 
-                # If a "Slope" column exists, create a "Trend" column with an arrow.
+                # Add Unit from metadata.
+                lab_df["Unit"] = lab_df.index.map(
+                    lambda test: st.session_state.feature_metadata.get(
+                        test.lower() + "_mean", {}).get("unit", "")
+                )
+
+                # Set the index name to "Feature".
+                lab_df.index.name = "Feature"
+
+                # Compute a new "Range" column from "Min" and "Max".
+                lab_df["Range"] = lab_df.apply(
+                    lambda row: f"{row['Min']:.1f} - {row['Max']:.1f}"
+                    if pd.notna(row["Min"]) and pd.notna(row["Max"]) else "",
+                    axis=1
+                )
+
+                # Compute a "Normal Range" column from the metadata.
+                def get_normal_range(feature):
+                    meta = st.session_state.feature_metadata.get(
+                        feature.lower() + "_mean", {})
+                    nl = meta.get("normal_lower", "")
+                    nu = meta.get("normal_upper", "")
+                    # Only return the range if both limits are defined.
+                    if pd.isna(nl) or pd.isna(nu) or nl == "" or nu == "":
+                        return ""
+                    return f"{nl} - {nu}"
+                lab_df["Normal Range"] = lab_df.index.map(get_normal_range)
+
+                # Rename "Normal Range" to "Reference".
+                lab_df.rename(
+                    columns={"Normal Range": "Reference"}, inplace=True)
+
+                # Compute the "Status" based on the "Mean" and the normal range.
+                def compute_status(row):
+                    mean_val = row["Mean"]
+                    meta = st.session_state.feature_metadata.get(
+                        row.name.lower() + "_mean", {})
+                    try:
+                        nl = float(meta.get("normal_lower", np.nan))
+                        nu = float(meta.get("normal_upper", np.nan))
+                    except (ValueError, TypeError):
+                        return ""
+                    if pd.isna(mean_val) or pd.isna(nl) or pd.isna(nu):
+                        return ""
+                    if mean_val < nl:
+                        return "Low"
+                    elif mean_val > nu:
+                        return "High"
+                    else:
+                        return "Normal"
+                lab_df["Status"] = lab_df.apply(compute_status, axis=1)
+
+                # Format "Slope" with arrow indications, if the column exists.
                 if "Slope" in lab_df.columns:
-                    def arrow_formatter(x):
+                    def format_slope_with_arrow(x):
                         if pd.isna(x):
                             return ""
-                        elif x > 0:
-                            return "▲"  # positive slope: arrow up
-                        elif x < 0:
-                            return "▼"  # negative slope: arrow down
-                        else:
-                            return "►"  # zero slope: arrow right
+                        arrow = "►" if x == 0 else ("▲" if x > 0 else "▼")
+                        return f"{x:.1f} {arrow}"
+                    lab_df["Slope"] = lab_df["Slope"].apply(
+                        format_slope_with_arrow)
 
-                    lab_df["Trend"] = lab_df["Slope"].apply(arrow_formatter)
+                # Reorder the columns to: Unit, Mean, Range, Reference, Status, Slope.
+                cols_order = ["Unit", "Mean",
+                              "Range", "Reference", "Status"]
+                if "Slope" in lab_df.columns:
+                    cols_order.append("Slope")
+                lab_df = lab_df[cols_order]
 
                 # Prepare a format mapping for numeric columns to show 1 decimal place.
                 num_cols = lab_df.select_dtypes(include=["number"]).columns
                 fmt = {col: "{:.1f}" for col in num_cols}
 
-                # Apply a Pandas Styler to create a LaTeX-style table look.
+                # Define a function for status coloring: only set a pastel red for High/Low.
+                def highlight_status(val):
+                    if val in ["High", "Low"]:
+                        return "color: #FF9999"  # Pastel red
+                    return ""  # Leave it unchanged
+
+                # Apply a Pandas Styler to create a table with the desired styling.
                 lab_styler = (
                     lab_df.style
+                    .set_table_styles([
+                        # Header styling:
+                        {'selector': 'th', 'props': [
+                            ('font-weight', 'bold'),
+                            ('text-align', 'center'),
+                            ('border', '1px solid #ccc'),
+                            ('padding', '0.5rem')
+                        ]}
+                    ])
                     .format(fmt)
                     .set_properties(**{
                         "text-align": "center",
                         "border": "1px solid #ccc",
                         "padding": "0.5rem"
                     })
-                    # Set the "Trend" column to a fixed, narrow width.
-                    .set_properties(subset=["Trend"], **{
+                    .set_properties(subset=["Slope"], **{
                         "min-width": "30px",
                         "max-width": "30px",
-                        "width": "30px"
+                        "width": "30px",
+                        "text-align": "right"
                     })
-                    # Style the header.
-                    .set_table_styles([
-                        {
-                            "selector": "th",
-                            "props": [
-                                ("font-weight", "bold"),
-                                ("text-align", "center"),
-                                ("border", "1px solid #ccc"),
-                                ("padding", "0.5rem")
-                            ]
-                        }
-                    ])
+                    .map(highlight_status, subset=["Status"])
                 )
 
-                st.dataframe(lab_styler)
+                # Optionally increase the height to show more rows.
+                st.dataframe(lab_styler, height=700)
             else:
                 st.write("No laboratory data available.")
 

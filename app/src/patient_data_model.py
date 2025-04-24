@@ -136,9 +136,61 @@ class Patient:
             "urineoutput": self.urineoutput.to_dict()
         }
 
+    def get_vital_average(self, feature_name):
+        """
+        Provides the average value of a vital sign feature.
+
+        Args:
+            feature_name (str): Name of the vital sign feature.
+
+        Returns:
+            Average value of the feature or None if not found.
+        """
+        if feature_name in self.vitals.columns:
+            # Convert values to numeric and drop any non-numeric entries (None/NaN)
+            values = pd.to_numeric(
+                self.vitals[feature_name], errors="coerce").dropna()
+            if not values.empty:
+                if not feature_name == "tempc":
+                    return int(values.mean())
+                else:
+                    return round(values.mean(), 1)
+        return None
+
+    def get_urineoutput_average(self):
+        """
+        Provides the average value of the urine output feature.
+
+        Returns:
+            Average value of urine output or None if not found.
+        """
+        if "urineoutput" in self.urineoutput.columns:
+            # Convert values to numeric and drop any non-numeric entries (None/NaN)
+            values = pd.to_numeric(
+                self.urineoutput["urineoutput"], errors="coerce").dropna()
+            if not values.empty:
+                return int(values.mean())
+        return None
+
+    def get_vasopressor_average(self, feature_name):
+        """
+        Provides the average value of the vasopressor feature.
+
+        Returns:
+            Average value of vasopressor or None if not found.
+        """
+        if feature_name in self.vasopressor.columns:
+            # Convert values to numeric and drop any non-numeric entries (None/NaN)
+            values = pd.to_numeric(
+                self.vasopressor[feature_name], errors="coerce").dropna()
+            if not values.empty:
+                return round(values.mean(), 2)
+        return None
+
     def get_feature_value(self, feature_name):
         """
         Provides the value of a feature based on the feature name.
+        For timeseries features (vitals, vasopressor, urineoutput), returns the average.
 
         Args:
             feature_name (str): Name of the feature.
@@ -160,14 +212,8 @@ class Patient:
         elif feature_name.startswith("specimen_group_"):
             specimen_key = feature_name[len("specimen_group_"):]
             return self.specimen.get(specimen_key)
-        elif feature_name.startswith("vitals_"):
-            vitals_key = feature_name[len("vitals_"):]
-            if vitals_key in self.vitals.columns:
-                return self.vitals[vitals_key]
-            else:
-                return None
-        elif any(feature_name.endswith(suffix) for suffix in ["_count", "_max", "_min", "_slope"]):
-            for suffix in ["_count", "_max", "_min", "_slope"]:
+        elif any(feature_name.endswith(suffix) for suffix in ["_count", "_mean", "_max", "_min", "_slope"]):
+            for suffix in ["_count", "_mean", "_max", "_min", "_slope"]:
                 if feature_name.endswith(suffix):
                     base_feature = feature_name[:-len(suffix)]
                     column_name = suffix.lstrip("_")
@@ -175,41 +221,31 @@ class Patient:
                         return self.laboratory.loc[base_feature, column_name]
                     else:
                         return None
-        elif feature_name.startswith("vasopressor_"):
-            vasopressor_key = feature_name[len("vasopressor_"):]
-            if vasopressor_key in self.vasopressor.columns:
-                return self.vasopressor[vasopressor_key]
-            else:
-                return None
-        elif feature_name.startswith("urineoutput_"):
-            urineoutput_key = feature_name[len("urineoutput_"):]
-            if urineoutput_key in self.urineoutput.columns:
-                return self.urineoutput[urineoutput_key]
-            else:
-                return None
+        elif any(feature_name.startswith(prefix) for prefix in ["heartrate", "sysbp", "diasbp", "meanbp", "resprate", "tempc", "spo2"]):
+            vital_mean = self.get_vital_average(feature_name)
+            return vital_mean
+        elif any(feature_name.startswith(prefix) for prefix in ["dobutamine", "dopamine", "epinephrine", "norepinephrine", "phenylephrine", "vasopressin"]):
+            vasopressor_mean = self.get_vasopressor_average(feature_name)
+            return vasopressor_mean
+        elif feature_name.startswith("urineoutput"):
+            urineoutput_mean = self.get_urineoutput_average()
+            return urineoutput_mean
         else:
             return None
 
-    def get_vital_average(self, feature_name):
+    def get_feature_unit(self, feature: str) -> str:
         """
-        Provides the average value of a vital sign feature.
-
-        Args:
-            feature_name (str): Name of the vital sign feature.
-
-        Returns:
-            Average value of the feature or None if not found.
+        Returns the unit for the given feature from the session state's feature_metadata dictionary.
+        If the feature is not found or is NaN, an empty string is returned.
         """
-        if feature_name in self.vitals.columns:
-            # Convert values to numeric and drop any non-numeric entries (None/NaN)
-            values = pd.to_numeric(
-                self.vitals[feature_name], errors="coerce").dropna()
-            if not values.empty:
-                if not feature_name == "tempc":
-                    return int(values.mean())
-                else:
-                    return round(values.mean(), 1)
-        return None
+        if "feature_metadata" in st.session_state:
+            unit = st.session_state.feature_metadata.get(
+                feature, {}).get("unit", "")
+            if pd.isna(unit):
+                return ""
+            return unit
+        else:
+            return ""
 
     def update_feature_with_scaling(self, data_type, feature_name, absolute_value):
         """
@@ -311,80 +347,80 @@ class Patient:
             if key in self.vitals.columns:
                 self.vitals[key] = value
 
-    def get_urineoutput_average(self):
-        """
-        Provides the average value of the urine output feature.
-
-        Returns:
-            Average value of urine output or None if not found.
-        """
-        if "urineoutput" in self.urineoutput.columns:
-            # Convert values to numeric and drop any non-numeric entries (None/NaN)
-            values = pd.to_numeric(
-                self.urineoutput["urineoutput"], errors="coerce").dropna()
-            if not values.empty:
-                return int(values.mean())
-        return None
-
-    def get_vasopressor_average(self, feature_name):
-        """
-        Provides the average value of the vasopressor feature.
-
-        Returns:
-            Average value of vasopressor or None if not found.
-        """
-        if feature_name in self.vasopressor.columns:
-            # Convert values to numeric and drop any non-numeric entries (None/NaN)
-            values = pd.to_numeric(
-                self.vasopressor[feature_name], errors="coerce").dropna()
-            if not values.empty:
-                return round(values.mean(), 2)
-        return None
-
     def convert_to_ml_data(self):
         """
         Converts all raw patient data into the machine learning data format.
-        Builds a numpy array with one row and columns corresponding to features in st.session_state.static_feature_names.
-        Overwrites self.ml_data["static"] with the resulting numpy array.
+        Builds numpy arrays for static features and a (1, 24, n_features) timeseries tensor.
         """
-        # Collect the static features
-        features = []
-        for feature in st.session_state.static_feature_names:
-            features.append(self.get_feature_value(feature))
+        import numpy as np
+        import pandas as pd
+        import streamlit as st
+
+        # 1) STATIC FEATURES ---------------------------------------------------
+        static_vals = [
+            self.get_feature_value(f)
+            for f in st.session_state.static_feature_names
+        ]
         ordered_static_df = pd.DataFrame(
-            [features], columns=st.session_state.static_feature_names)
+            [static_vals],
+            columns=st.session_state.static_feature_names
+        )
 
-        # Collect the timeseries features
-        vitals_df = self.vitals
-        vasopressor_df = self.vasopressor
-        urineoutput_df = self.urineoutput
+        # 2) TIMESERIES FEATURES ------------------------------------------------
+        #   a) merge raw dataframes
+        merged = pd.concat(
+            [self.vitals, self.urineoutput, self.vasopressor],
+            axis=1
+        )
+        ordered_ts_df = merged[st.session_state.timeseries_feature_names]
 
-        # Merge them along columns
-        merged_df = pd.concat(
-            [vitals_df, urineoutput_df, vasopressor_df], axis=1)
+        #   b) flatten in FEATURE‑MAJOR order: feature_0…feature_23, next_feature_0…_23, …
+        n_hours = 24
+        flattened = {}
+        for feature in ordered_ts_df.columns:
+            for hour in range(n_hours):
+                flattened[f"{feature}_{hour}"] = ordered_ts_df.at[hour, feature]
+        ts_flat_df = pd.DataFrame([flattened])  # shape (1, 24 * n_features)
 
-        # Reorder columns to the required order (st.session_state.timeseries_feature_names)
-        ordered_timeseries_df = merged_df[st.session_state.timeseries_feature_names]
-        # Flatten the timeseries data: reduce the timestep rows into individual columns.
-        flattened_data = {}
-        n_hours = 24  # assuming 24 timesteps; adjust if necessary
-        for feature in ordered_timeseries_df.columns:
-            # For each feature, assign each timestep value to a new column named feature_i.
-            for i in range(n_hours):
-                flattened_data[f"{feature}_{i}"] = ordered_timeseries_df[feature].iloc[i]
-        ordered_timeseries_df = pd.DataFrame([flattened_data])
+        #   c) align columns exactly to what the scaler saw at fit time
+        scaler = st.session_state.sepsis_prediction_model.timeseries_scaler
+        expected_cols = list(scaler.feature_names_in_)
+        ts_flat_df = ts_flat_df.reindex(columns=expected_cols)
 
-        # Now apply the scaler
-        scaled_static_data, scaled_timeseries_data = st.session_state.sepsis_prediction_model.scale_ml_data(
-            ordered_static_df, ordered_timeseries_df)
+        # 3) SCALE BOTH STATIC & TIMESERIES -------------------------------------
+        scaled_static_df, scaled_ts_flat_df = (
+            st.session_state.sepsis_prediction_model
+            .scale_ml_data(ordered_static_df, ts_flat_df)
+        )
+        # fill missing, cast
+        scaled_static = (
+            scaled_static_df
+            .fillna(-1)
+            .astype(np.float32)
+            .to_numpy()
+        )
+        scaled_ts_flat = (
+            scaled_ts_flat_df
+            .fillna(-1)
+            .astype(np.float32)
+        )
 
-        # Reshape the timeseries data
-        scaled_timeseries_data = scaled_timeseries_data.to_numpy().reshape(
-            1, scaled_timeseries_data.shape[0], scaled_timeseries_data.shape[1])
+        # 4) RESHAPE TIMESERIES INTO (1, 24, n_features) ------------------------
+        n_features = len(ordered_ts_df.columns)
+        total_cols = scaled_ts_flat.shape[1]
+        assert total_cols == n_hours * n_features, (
+            f"Expected {n_hours}×{n_features}={n_hours*n_features} cols, "
+            f"got {total_cols}"
+        )
 
-        # Update the ml_data attribute
-        self.ml_data["static"] = scaled_static_data.to_numpy()
-        self.ml_data["timeseries"] = scaled_timeseries_data
+        # scaled_ts_flat is feature-major, so first reshape to (n_features, n_hours)
+        arr = scaled_ts_flat.to_numpy().reshape(n_features, n_hours)
+        # then transpose to (n_hours, n_features) and add batch-dim
+        timeseries_array = arr.T[np.newaxis, :, :]
+
+        # 5) SAVE INTO self.ml_data ---------------------------------------------
+        self.ml_data["static"] = scaled_static
+        self.ml_data["timeseries"] = timeseries_array
 
     @classmethod
     def from_dict(cls, data):

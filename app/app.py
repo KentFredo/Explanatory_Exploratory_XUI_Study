@@ -27,9 +27,21 @@ if "color_non_survivor" not in st.session_state:
 if "random_seed" not in st.session_state:
     st.session_state.random_seed = random.randint(1, 10000)
 
+# Initialize session state on first run
+if "consent_given" not in st.session_state:
+    st.session_state.consent_given = False
+
 # Session state for finished training
+if 'training_patient_loaded' not in st.session_state:
+    st.session_state.training_patient_loaded = False
 if "training_finished" not in st.session_state:
     st.session_state.training_finished = False
+
+# Order of patients in the study
+# 0: Explanatory: TN, TP, FN; Exploratory: TP, FP, TN
+# 1: Explanatory: TP, FP, TN; Exploratory: TN, TP, FN
+if "patient_order" not in st.session_state:
+    st.session_state.patient_order = 1
 
 # Session state for the prediction model
 if "sepsis_prediction_model" not in st.session_state:
@@ -41,6 +53,8 @@ if "sepsis_prediction_model" not in st.session_state:
 # Session State for selected Study (0: explanatory, 1: exploratory)
 if 'study_xui_selection' not in st.session_state:
     st.session_state.study_xui_selection = None
+if 'first_xui_evaluated' not in st.session_state:
+    st.session_state.first_xui_evaluated = None
 
 # Session State for selected Patient
 if 'current_patient_index' not in st.session_state:
@@ -63,6 +77,8 @@ if "nasa_tlx_done" not in st.session_state:
     st.session_state.nasa_tlx_done = False
 if "trust_evaluation_done" not in st.session_state:
     st.session_state.trust_evaluation_done = False
+if 'trigger_scroll' not in st.session_state:
+    st.session_state.trigger_scroll = False
 
 
 # Session States for the patient evaluation logic:
@@ -125,10 +141,16 @@ if 'patient' not in st.session_state:
     st.session_state.patient = None
 if 'counterfactual_patient' not in st.session_state:
     st.session_state.counterfactual_patient = None
+if 'counterfactual_data_changed' not in st.session_state:
+    st.session_state.counterfactual_data_changed = False
+if 'counterfactual_changed_state_changed' not in st.session_state:
+    st.session_state.counterfactual_changed_state_changed = False
 if 'static_feature_names' not in st.session_state:
     st.session_state.static_feature_names = None
 if 'timeseries_feature_names' not in st.session_state:
     st.session_state.timeseries_feature_names = None
+if 'feature_metadata' not in st.session_state:
+    st.session_state.feature_metadata = None
 if 'background_static' not in st.session_state:
     st.session_state.background_static = None
 if 'background_timeseries' not in st.session_state:
@@ -161,45 +183,37 @@ if 'shap_group_contributions' not in st.session_state:
 
 
 # Page Layout
+# Reduce the spacing at the top of the page
+st.markdown(
+    """
+    <style>
+    /* Override the padding of the main content container */
+    .stMainBlockContainer {
+        padding-top: 45px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # Starting the sidebar
 with st.sidebar:
+
     st.markdown(
         """
-        <style>
-        /* Increase the sidebar width */
-        [data-testid="stSidebar"] > div:first-child {
-            width: 290px;
-        }
-        [data-testid="stSidebar"] > div:first-child > div {
-            width: 290px;
-            /* Adjust the right padding. Modify the padding value as needed. */
-            padding-right: 5px;
-        }
-        </style>
-        """,
+    <style>
+    /* Increase the sidebar width */
+    [data-testid="stSidebar"] > div:first-child {
+        width: 300px;
+    }
+    [data-testid="stSidebar"] > div:first-child > div {
+        width: 300px;
+        /* Adjust the right padding. Modify the padding value as needed. */
+        padding-right: 5px;
+    }
+    </style>
+    """,
         unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stSidebarHeader"] > img, 
-        div[data-testid="collapsedControl"] > img {
-            height: 3.5rem;
-            width: auto;
-        }
-
-        div[data-testid="stSidebarHeader"], 
-        div[data-testid="stSidebarHeader"] > *,
-        div[data-testid="collapsedControl"], 
-        div[data-testid="collapsedControl"] > * {
-            display: flex;
-            align-items: center;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
     )
 
     # Show the Logo
@@ -207,7 +221,31 @@ with st.sidebar:
         "app/assets/SepsisVision_Logo.png", size="large"
     )
 
-    # Functions used within the sidebar for the study flow
+    # Function to load the training patient
+    def load_training_patient():
+        if not st.session_state.training_patient_loaded:
+            data_loader.load_patient_data(3, 0)
+            # Calculate the risk for the patient
+            risk_array = st.session_state.sepsis_prediction_model.predict_sepsis_mortality_risk()
+            st.session_state.patient_risk = round(risk_array[0, 0], 2)
+
+            # Calculate the SHAP values for the patient
+            st.session_state.sepsis_prediction_model.generate_local_shap_values()
+
+            # Calculate the mean of timeseries SHAP values for the patient
+            st.session_state.sepsis_prediction_model.aggregate_timeseries_shap_values()
+
+            # Now aggregate the SHAP values into overall and category-specific evidence.
+            st.session_state.sepsis_prediction_model.aggregate_shap_values()
+
+            # Set a new random seed for the button order
+            st.session_state.random_seed = random.randint(1, 10000)
+
+            # Set the training patient loaded flag to True
+            st.session_state.training_patient_loaded = True
+
+        # Functions used within the sidebar for the study flow
+
     def next_study_patient():
         if not st.session_state.patient_evaluation_running and not st.session_state.patient_data_tab_evaluation_running and not st.session_state.patient_prediction_tab_evaluation_running:
             # If the patient evaluation is currently not running, load a new patient and start the new patient study.
@@ -221,6 +259,9 @@ with st.sidebar:
             # Calculate the SHAP values for the patient
             st.session_state.sepsis_prediction_model.generate_local_shap_values()
 
+            # Calculate the mean of timeseries SHAP values for the patient
+            st.session_state.sepsis_prediction_model.aggregate_timeseries_shap_values()
+
             # Now aggregate the SHAP values into overall and category-specific evidence.
             st.session_state.sepsis_prediction_model.aggregate_shap_values()
 
@@ -232,6 +273,9 @@ with st.sidebar:
 
                 # Set a new random seed for the button order
                 st.session_state.random_seed = random.randint(1, 10000)
+
+                if st.session_state.current_patient_index == 0 and not st.session_state.explanatory_xui_study_finished and not st.session_state.exploratory_xui_study_finished:
+                    st.session_state.first_xui_evaluated = st.session_state.study_xui_selection
 
                 # Start the timer.
                 st.session_state.start_time = datetime.datetime.now()
@@ -245,11 +289,34 @@ with st.sidebar:
         end_time = datetime.datetime.now()
         time_taken = end_time - st.session_state.start_time
 
-        st.radio("Survival", ["Dies", "Survives"], key="survival")
-        st.slider("Certainty (1: Uncertain, 5: Certain)",
-                  min_value=1, max_value=5, step=1, key="certainty")
+        survival = None
+        certainty = None
+        button_text = "Submit Evaluation"
 
-        if st.button("Submit Evaluation"):
+        if st.session_state.patient_data_tab_evaluation_running:
+
+            survival = st.radio(
+                "Survival", ["Dies", "Survives"], key="survival")
+            certainty = st.slider("Certainty (1: Uncertain, 5: Certain)",
+                                  min_value=1, max_value=5, step=1, key="certainty")
+
+            button_text = "Submit Evaluation"
+
+        else:
+            # Get rating for the patient data tab to load it as default for the slider by loading the last appended element from st.session_state.prediction_confidence_time_results
+            last_evaluation = st.session_state.prediction_confidence_time_results[-1]
+            last_survival_text = last_evaluation["survival"]
+            last_survival = 0 if last_survival_text == "Dies" else 1
+            last_certainty = last_evaluation["certainty"]
+
+            survival = st.radio("Survival", ["Dies", "Survives"],
+                                key="survival", index=last_survival)
+            certainty = st.slider("Certainty (1: Uncertain, 5: Certain)",
+                                  min_value=1, max_value=5, step=1, value=last_certainty, key="certainty")
+
+            button_text = "Keep Evaluation" if survival == last_survival_text and certainty == last_certainty else "Update Evaluation"
+
+        if st.button(button_text):
             survival = st.session_state.survival
             certainty = st.session_state.certainty
 
@@ -262,7 +329,7 @@ with st.sidebar:
                 "certainty": certainty,
                 "time_taken": time_taken.total_seconds(),
             })
-            # If the Exploratory Study is running on the exploratory xui, the interaction metric needs to be saved
+            # If the Exploratory Study is running on the exploratory xui, the interaction metric needs to be saved for the last interaction
             if st.session_state.study_xui_selection == 1 and st.session_state.patient_prediction_tab_evaluation_running:
                 end_time = datetime.datetime.now()
                 time_taken = end_time - st.session_state.exploratory_view_start_time
@@ -273,6 +340,7 @@ with st.sidebar:
                     "to": 9,
                     "time_on_from": time_taken.total_seconds(),
                 })
+                st.session_state.exploratory_view_start_time = None
 
             # Clear dialog state and patient data
             st.session_state.show_evaluation_dialog = False
@@ -291,7 +359,7 @@ with st.sidebar:
                 st.session_state.patient_risk = 0.0
                 st.session_state.scenario_risk = 0.0
                 st.session_state.counterfactual_patient = None
-
+                st.session_state.counterfactual_data_changed = False
                 st.session_state.current_patient_index += 1
                 st.session_state.exploratory_view = None
 
@@ -397,6 +465,15 @@ with st.sidebar:
             # Show dialog when button is clicked
             st.session_state.show_evaluation_dialog = True
             evaluate_patient()
+    elif not st.session_state.training_patient_loaded:
+        st.button(
+            "Load Training Patient",
+            type="secondary",
+            help="Load the training patient",
+            key="load_training_patient",
+            on_click=load_training_patient,
+            disabled=st.session_state.training_patient_loaded is True,
+        )
     elif st.session_state.current_patient_index < 3:
         st.button(
             "Load next Patient",
@@ -430,21 +507,17 @@ with st.sidebar:
 
 # Define subpages
 study_start_page = st.Page("subpages/study_flow.py",
-                           title="Study Flow", icon=":material/home:", default=True)
+                           title="Study Flow", default=True)
 patient_data_page = st.Page("subpages/patient_data.py",
-                            title="Patient Data", icon=":material/personal_injury:")
+                            title="Patient Data")
 explanatory_xui_page = st.Page("subpages/explanatory_xui.py",
-                               title="Explanatory XUI", icon=":material/analytics:")
+                               title="Explanatory XUI")
 exploratory_xui_page = st.Page("subpages/exploratory_xui.py",
-                               title="Exploratory XUI", icon=":material/analytics:")
+                               title="Exploratory XUI")
 counterfactual_xui_page = st.Page("subpages/counterfactuals_xui.py",
-                                  title="Counterfactual XUI", icon=":material/analytics:")
-similar_patients_page = st.Page("subpages/similar_patients_xui.py",
-                                title="Similar Patients", icon=":material/analytics:")
-global_model_page = st.Page("subpages/global_model_xui.py",
-                            title="Global Model", icon=":material/analytics:")
+                                  title="Counterfactual XUI")
 information_page = st.Page("subpages/study_information.py",
-                           title="Study Information", icon=":material/analytics:")
+                           title="Study Information")
 
 
 # Define the navigation structure
@@ -470,7 +543,7 @@ match st.session_state.study_xui_selection:
             {
                 "Study Start Page": [study_start_page],
                 "Patient": [patient_data_page],
-                "Exploratory XUI": [exploratory_xui_page, counterfactual_xui_page, similar_patients_page, global_model_page],
+                "Exploratory XUI": [exploratory_xui_page, counterfactual_xui_page],
                 "Information": [information_page],
             }, position="hidden"
         )

@@ -141,7 +141,6 @@ class PatientBase:
                 "Dataframe is not set. Please set it using set_dataframe().")
 
         if feature not in self._df.columns:
-            print(self._df.columns)
             raise ValueError(
                 f"Feature '{feature}' not found in dataframe columns.")
 

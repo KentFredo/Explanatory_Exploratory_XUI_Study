@@ -9,20 +9,7 @@ import datetime
 import random
 
 
-def display_patient_prediction():
-    # Reduce the spacing at the top of the page
-    st.markdown(
-        """
-        <style>
-        /* Override the padding of the main content container */
-        .stMainBlockContainer {
-            padding-top: 60px !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
+def display_exploratory_patient_prediction():
     # Start the counter to also count the interaction without any other exploratory view
     if st.session_state.exploratory_view_start_time is None:
         st.session_state.exploratory_view_start_time = datetime.datetime.now()
@@ -61,11 +48,13 @@ def display_patient_prediction():
                 )
 
                 # Generate the risk calculation button
-                if st.button("Calculate Risk", key="calculate_risk_button", type="primary"):
+                if st.button("Calculate Risk", key="calculate_risk_button", type="primary", disabled=st.session_state.counterfactual_data_changed == False):
+                    st.session_state.counterfactual_data_changed = False
                     st.session_state.counterfactual_patient.convert_to_ml_data()
                     risk_array = st.session_state.sepsis_prediction_model.predict_sepsis_mortality_risk(
                         counterfactual_patient=True)
                     st.session_state.scenario_risk = round(risk_array[0, 0], 2)
+                    st.rerun()
 
                 else:
                     pass
@@ -89,7 +78,7 @@ def display_patient_prediction():
 
             st.session_state.exploratory_interactions.append({
                 "patient_id": st.session_state.current_patient_index,
-                "from": st.session_state.exploratory_view,
+                "from": st.session_state.exploratory_view if st.session_state.exploratory_view is not None else 0,
                 "to": view,
                 "time_on_from": time_taken.total_seconds(),
             })
@@ -115,7 +104,7 @@ def display_patient_prediction():
         buttons = [
             {"label": "Risk Explanation",
                 "key": "feature_importance_button", "args": (1,)},
-            {"label": "Top Risk Factors",
+            {"label": "Model Behavior",
                 "key": "feature_contribution_button", "args": (2,)},
             {"label": "What-if Analysis",
                 "key": "counterfactual_button", "args": (3,)},

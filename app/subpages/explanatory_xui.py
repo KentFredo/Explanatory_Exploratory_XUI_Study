@@ -6,15 +6,7 @@ from src.text_explanations_generator import generate_clinical_interpretation
 import pandas as pd
 
 
-def display_patient_prediction():
-    # Reduce the spacing at the top of the page
-    st.markdown("""
-        <style>
-        .stMainBlockContainer {
-            padding-top: 60px !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+def display_explanatory_patient_prediction():
 
     # Top columns layout
     pat_demographics_col, risk_col, interpretation_col = st.columns(
@@ -75,6 +67,7 @@ def display_patient_prediction():
 
     with risk_detail_col:
         # Detailed SHAP-based explanations
-        risk_df = st.session_state.sepsis_prediction_model.create_risk_table().copy()
+        risk_df = st.session_state.sepsis_prediction_model.create_risk_table(
+            shorten_table=False).copy()
         render_local_detail_shap_table(
             risk_df, st.session_state.color_non_survivor, st.session_state.color_survivor, top_n=5)

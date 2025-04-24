@@ -3,29 +3,50 @@ import altair as alt
 import pandas as pd
 
 
+def format_contribution(x):
+    """
+    Format contributions as percentages with one decimal.
+    For positive values, a plus sign is added.
+    """
+    if pd.isnull(x):
+        return "n/a"
+    elif x == 0:
+        return "0.0%"
+    elif x > 0:
+        return f"{x:.1f}%"
+    else:
+        return f"{x:.1f}%"
+
+
 def create_global_shap_bar_plot():
     """
     Create a horizontal bar plot for global SHAP values with:
-    - Top N slider
-    - Optional manual feature inclusion
-    - An 'Others' bar
+      - Top N slider
+      - Optional manual feature inclusion (dropdown shows the formatted contribution)
+      - An 'Others' bar is computed for unselected features.
     """
 
-    color_survivor = st.session_state.color_survivor
-    color_non_survivor = st.session_state.color_non_survivor
+    color = "#F3FFE3"
 
     df = st.session_state.global_feature_importance.copy()
 
     # Beautify feature names
     df["feature"] = df["feature"].str.replace("_", " ").str.title()
 
-    # Rename columns for plotting logic
+    # Rename columns for plotting logic.
+    # "feature" becomes "Parameter" and "mean_shap_value" becomes "Absolute Contribution"
     df = df.rename(columns={
         "feature": "Parameter",
         "mean_shap_value": "Absolute Contribution"
     })
+
+    # Create a formatted version of the SHAP contribution (in percentage)
+    df["Formatted Contribution"] = df["Absolute Contribution"].apply(
+        format_contribution)
+
+    # Add other necessary columns
     df["Raw Value"] = ""
-    df["Color"] = color_non_survivor
+    df["Color"] = "#F3FFE3"
 
     # Sort by importance
     df_sorted = df.sort_values(
@@ -33,10 +54,10 @@ def create_global_shap_bar_plot():
 
     # UI Layout: slider + multiselect side-by-side
     col1, col2 = st.columns([2, 3])
-
     with col1:
         top_n = st.slider("Number of top features to display:",
-                          min_value=5, max_value=min(len(df), 40), value=min(len(df), 10), step=1)
+                          min_value=5, max_value=min(len(df), 40),
+                          value=min(len(df), 15), step=1)
 
     # Get top N features
     top_df = df_sorted.iloc[:top_n].copy()
@@ -47,45 +68,57 @@ def create_global_shap_bar_plot():
     remaining_features = list(remaining_df["Parameter"])
 
     with col2:
+        # Create options as "Parameter (Formatted Contribution)"
+        options = {f"{row['Parameter']} ({row['Formatted Contribution']})": row["Parameter"]
+                   for idx, row in remaining_df.iterrows()}
+        options_list = list(options.keys())
         additional_features = st.multiselect(
             "Add more features to compare:",
-            options=remaining_features,
+            options=options_list,
             default=[]
         )
 
     # Create DataFrame for manually selected features
     manual_df = remaining_df[remaining_df["Parameter"].isin(
-        additional_features)].copy()
+        [options[opt] for opt in additional_features]
+    )].copy()
     manual_features = set(manual_df["Parameter"])
 
     # Exclude top N and manually added from the remaining for "Others"
     excluded_features = top_features.union(manual_features)
     others_df = df_sorted[~df_sorted["Parameter"].isin(excluded_features)]
 
-    # Create "Others" row
+    # Create "Others" row (aggregated) if there are any remaining features.
     if not others_df.empty:
         others_row = pd.DataFrame([{
             "Parameter": "Others",
             "Absolute Contribution": others_df["Absolute Contribution"].sum(),
+            "Formatted Contribution": format_contribution(others_df["Absolute Contribution"].sum()),
             "Raw Value": "",
-            "Color": color_non_survivor
+            "Color": "#F3FFE3"
         }])
     else:
         others_row = pd.DataFrame(
-            columns=["Parameter", "Absolute Contribution", "Raw Value", "Color"])
+            columns=["Parameter", "Absolute Contribution",
+                     "Formatted Contribution", "Raw Value", "Color"]
+        )
 
-    # Combine all parts in order: top N → manually added → Others
-    df_plot = pd.concat([top_df, manual_df, others_row], ignore_index=True)
+    # Combine the selected parts (top N and manually added)
+    df_plot = pd.concat([top_df, manual_df], ignore_index=True)
     df_plot["order"] = df_plot.index + 1
 
     # Build Altair chart
     chart = alt.Chart(df_plot).mark_bar().encode(
-        x=alt.X("Absolute Contribution:Q", title="Mean Absolute SHAP Value"),
+        x=alt.X("Absolute Contribution:Q",
+                title="Mean Absolute Risk Contribution"),
         y=alt.Y("Parameter:N", sort=alt.SortField(
             field="order", order="ascending"), title="Feature"),
-        color=alt.Color("Color:N", scale=alt.Scale(
-            domain=[color_non_survivor], range=[color_non_survivor]), legend=None),
-        tooltip=["Parameter", "Absolute Contribution"]
+        color=alt.Color("Color:N", scale=alt.Scale(domain=[color],
+                                                   range=[color]), legend=None),
+        tooltip=[
+            "Parameter",
+            alt.Tooltip("Formatted Contribution:N", title="Risk Contribution")
+        ]
     ).properties(
         width=600,
         height=500

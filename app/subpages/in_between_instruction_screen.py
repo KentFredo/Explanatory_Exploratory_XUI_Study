@@ -33,7 +33,7 @@ def show_in_between_instruction():
                 /* Arrow and text positioned relative to the parent container */
                 .arrow-text-container {
                     position: absolute;
-                    top: 5.5rem; /* distance from the parent's top edge */
+                    top: 1.5rem; /* distance from the parent's top edge */
                     left: -2.5rem; /* adjust as needed */
                     display: flex;
                     align-items: center; 
@@ -82,7 +82,7 @@ def show_in_between_instruction():
                 }}
                 .arrow-text-container {{
                     position: absolute;
-                    top: 23rem; /* adjust vertical placement relative to parent */
+                    top: 19.5rem; /* adjust vertical placement relative to parent */
                     left: -2.5rem;
                     display: flex;
                     align-items: center; 

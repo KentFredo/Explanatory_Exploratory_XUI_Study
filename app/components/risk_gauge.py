@@ -10,10 +10,12 @@ def create_plotly_risk_gauge(value, max_value=1):
 
     # Compute percentage and choose color based on thresholds:
     percentage = value * 100  # Directly use value, as max_value is 1
-    if percentage < 35:
+    if percentage < 25:
         bar_color = st.session_state.color_survivor
-    elif percentage < 65:
-        bar_color = "orange"
+    elif percentage < 50:
+        bar_color = "#F4D03F"
+    elif percentage < 75:
+        bar_color = "#E67E22"
     else:
         bar_color = st.session_state.color_non_survivor
 

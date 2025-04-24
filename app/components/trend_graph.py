@@ -4,10 +4,6 @@ import pandas as pd
 
 
 def scale_with_margin(series: pd.Series, margin=0.1):
-    """
-    Return an Altair scale that expands the domain of 'series'
-    by ±'margin' (fraction) to avoid points on the extreme edges.
-    """
     if series.empty:
         return alt.Scale(domain=[0, 1], nice=False, zero=False)
     min_val = series.min()
@@ -36,23 +32,20 @@ def generate_trend_graph():
     # ================================
     # Merge Data into a Single DataFrame
     # ================================
-
-    # Process vitals data.
     vitals_df = st.session_state.patient.vitals.reset_index()
 
-    # Add Urine Output if available.
     if hasattr(st.session_state.patient, "urineoutput") and st.session_state.patient.urineoutput is not None:
         urineoutput_df = st.session_state.patient.urineoutput.copy()
         if not urineoutput_df.empty and "urineoutput" in urineoutput_df.columns:
             vitals_df["urineoutput"] = urineoutput_df["urineoutput"].tolist()
 
-    # Process vasopressor data.
     vaso_df = st.session_state.patient.vasopressor.reset_index()
     vaso_cols = [col for col in vaso_df.columns if col != 'index']
     filtered_vaso_cols = [
         col for col in vaso_cols
         if pd.notnull(vaso_df[col].max()) and vaso_df[col].max() > 0
     ]
+
     if filtered_vaso_cols:
         # Melt vasopressor data into long format.
         vaso_long_df = vaso_df.melt(
@@ -61,81 +54,116 @@ def generate_trend_graph():
             var_name='Medication',
             value_name='Dose'
         )
+        # Add a new column with formatted medication names.
+        vaso_long_df["Medication_Title"] = vaso_long_df["Medication"].apply(
+            lambda x: x.title()
+        )
     else:
-        vaso_long_df = pd.DataFrame(
-            columns=['index', 'Medication', 'Dose'])
+        vaso_long_df = pd.DataFrame(columns=['index', 'Medication', 'Dose'])
 
     # Merge vitals and vasopressor data on "index" (outer join).
     trend_df = pd.merge(vitals_df, vaso_long_df, on='index', how='outer')
 
+    if not vaso_long_df.empty:
+        def get_vaso_dose_with_unit(row):
+            med = str(row['Medication']).strip().lower()
+            unit = st.session_state.feature_metadata.get(
+                med, {}).get("unit", "")
+            if not unit or pd.isna(unit):
+                fallback_units = {
+                    'dobutamine_dose': 'mcg/kg/min',
+                    'dopamine_dose': 'mcg/kg/min',
+                    'vasopressin_dose': 'units/min',
+                    'phenylephrine_dose': 'mcg/kg/min',
+                    'epinephrine_dose': 'mcg/kg/min',
+                    'norepinephrine_dose': 'mcg/kg/min'
+                }
+                unit = fallback_units.get(med, 'n/a')
+            return f"{row['Dose']:.1f} {unit}" if pd.notna(row['Dose']) else ""
+
+        vaso_long_df["Dose_with_unit"] = vaso_long_df.apply(
+            get_vaso_dose_with_unit, axis=1)
+
+        # Aggregate multiple vasopressor entries per time index using the formatted names.
+        agg_vaso = vaso_long_df.groupby("index").apply(
+            lambda df: "\u2028".join(
+                f"{med_title}: {dose}"
+                for med_title, dose in zip(df["Medication_Title"], df["Dose_with_unit"]) if dose
+            )
+        ).reset_index().rename(columns={0: "VasopressorInfo"})
+        trend_df = pd.merge(trend_df, agg_vaso, on='index', how='left')
+    else:
+        trend_df["VasopressorInfo"] = ""
+
+    for field in ['heartrate', 'resprate', 'spo2', 'tempc', 'urineoutput']:
+        unit = st.session_state.feature_metadata.get(field, {}).get("unit", "")
+        trend_df[f'{field}_with_unit'] = trend_df[field].apply(
+            lambda x: f"{x:.1f} {unit}" if pd.notna(x) else ""
+        )
+
     trend_df['BP'] = (
         trend_df['sysbp'].astype(int).astype(str) + '/' +
         trend_df['diasbp'].astype(int).astype(str) +
-        " (" + trend_df['meanbp'].astype(int).astype(str) + ")"
+        " (" + trend_df['meanbp'].astype(int).astype(str) + ") mmHg"
     )
 
     # ================================
     # Define the Unified Tooltip and Selection
     # ================================
+    # Use the formatted medication name in the tooltip
     tooltip_cols = [
         alt.Tooltip('index:Q', title='Time'),
-        alt.Tooltip('Medication:N', title='Medication'),
-        alt.Tooltip('Dose:Q', title='Dose'),
+        alt.Tooltip('VasopressorInfo:N', title='Vasopressor'),
         alt.Tooltip('BP:N', title='BP'),
-        alt.Tooltip('heartrate:Q', title='Heart Rate'),
-        alt.Tooltip('resprate:Q', title='Resp Rate'),
-        alt.Tooltip('spo2:Q', title='SpO2'),
-        alt.Tooltip('tempc:Q', title='Temp (°C)'),
-        alt.Tooltip('urineoutput:Q', title='Urine Output')
+        alt.Tooltip('heartrate_with_unit:N', title='Heart Rate'),
+        alt.Tooltip('resprate_with_unit:N', title='Resp Rate'),
+        alt.Tooltip('spo2_with_unit:N', title='SpO2'),
+        alt.Tooltip('tempc_with_unit:N', title='Temp'),
+        alt.Tooltip('urineoutput_with_unit:N', title='Urine Output')
     ]
 
     nearest = alt.selection_point(
         fields=['index'], nearest=True, on='mouseover', empty='none', name='shared'
     )
 
-    # Create a unified selector layer based on trend_df.
     selector = alt.Chart(trend_df).mark_point(opacity=0.01).encode(
         x='index:Q',
         tooltip=tooltip_cols
     ).add_params(nearest)
 
     # ================================
-    # Vasopressor Chart
+    # Vasopressor Chart (using merged trend_df)
     # ================================
-    if filtered_vaso_cols:
-        # Note: We still use the original vaso_df for transforming the vasopressor data.
-        folded = alt.Chart(vaso_df).transform_fold(
-            filtered_vaso_cols,
-            as_=['Medication', 'Dose']
-        )
+    # Filter rows that actually have formatted medication and dose data.
+    vaso_data = trend_df.dropna(subset=['Medication', 'Dose'])
+    vaso_data = vaso_data[vaso_data['Medication'].isin(filtered_vaso_cols)]
 
-        vaso_line = folded.mark_line().encode(
+    if not vaso_data.empty:
+        vaso_line = alt.Chart(vaso_data).mark_line().encode(
             x=alt.X('index:Q', axis=alt.Axis(
                 title=None, labels=False, ticks=False)),
             y=alt.Y('Dose:Q', title='Vasopressor',
                     scale=alt.Scale(zero=False, nice=True),
                     axis=alt.Axis(titleAngle=-90, titlePadding=0, titleAlign="center", titleX=-55, format=".1f")),
+            # Use the formatted medication names for the legend.
             color=alt.Color(
-                'Medication:N',
+                'Medication_Title:N',
                 scale=alt.Scale(range=color_palette["vasopressor"]),
                 legend=alt.Legend(orient='top', title=None)
             ),
             tooltip=tooltip_cols
-        ).properties(
-            width=700,
-            height=90
-        )
+        ).properties(width=700, height=90)
 
-        vaso_rule = alt.Chart(vaso_df).mark_rule(color='gray').encode(
+        vaso_rule = alt.Chart(vaso_data).mark_rule(color='gray').encode(
             x='index:Q'
         ).transform_filter(nearest)
 
-        vaso_selector = folded.mark_point(opacity=0.01).encode(
+        vaso_selector = alt.Chart(vaso_data).mark_point(opacity=0.01).encode(
             x='index:Q',
             tooltip=tooltip_cols
         ).add_params(nearest)
 
-        vaso_chart = (vaso_line + vaso_rule + vaso_selector)
+        vaso_chart = vaso_line + vaso_rule + vaso_selector
     else:
         empty_df = pd.DataFrame({'index': range(24), 'dummy': [0]*24})
         vaso_chart = alt.Chart(empty_df).mark_line(opacity=0).encode(
@@ -143,28 +171,29 @@ def generate_trend_graph():
                 title=None, labels=False, ticks=False)),
             y=alt.Y('dummy:Q', title='Vasopressor',
                     axis=alt.Axis(titleAngle=-90, titlePadding=0, titleAlign="center", titleX=-55, format=".1f"))
-        ).properties(
-            height=90,
-            width=700,
-        )
+        ).properties(height=90, width=700)
 
     # ================================
     # Vitals / Circulation Charts
     # ================================
     st.markdown("#### Trends")
-    # Filter trend_df for rows with vitals data
     vitals_for_plot = trend_df[trend_df['diasbp'].notnull()].copy()
 
-    bp_min = min(vitals_for_plot["diasbp"].min(),
-                 vitals_for_plot["sysbp"].min(), vitals_for_plot["meanbp"].min())
-    bp_max = max(vitals_for_plot["diasbp"].max(),
-                 vitals_for_plot["sysbp"].max(), vitals_for_plot["meanbp"].max())
+    bp_min = min(
+        vitals_for_plot["diasbp"].min(),
+        vitals_for_plot["sysbp"].min(),
+        vitals_for_plot["meanbp"].min()
+    )
+    bp_max = max(
+        vitals_for_plot["diasbp"].max(),
+        vitals_for_plot["sysbp"].max(),
+        vitals_for_plot["meanbp"].max()
+    )
     bp_span = bp_max - bp_min
-    margin_val = 0.1  # 10% margin
+    margin_val = 0.1
     bp_lower = bp_min - bp_span * margin_val
     bp_upper = bp_max + bp_span * margin_val
-    bp_scale = alt.Scale(
-        domain=[bp_lower, bp_upper], nice=True, zero=False)
+    bp_scale = alt.Scale(domain=[bp_lower, bp_upper], nice=True, zero=False)
 
     bp_band = alt.Chart(vitals_for_plot).mark_area(
         opacity=0.15,
@@ -240,9 +269,6 @@ def generate_trend_graph():
         combined_chart = (chart + chart_rule + selector)
         other_charts.append(combined_chart)
 
-    # ================================
-    # Concatenate the Charts Vertically
-    # ================================
     all_charts = alt.vconcat(
         vaso_chart,
         bp_chart,

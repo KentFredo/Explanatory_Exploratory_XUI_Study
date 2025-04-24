@@ -1,1 +1,4 @@
-heartrate,sysbp,diasbp,meanbp,resprate,tempc,spo2,urineoutput,dobutamine_dose,dopamine_dose,vasopressin_dose,phenylephrine_dose,epinephrine_dose,norepinephrine_dose
+,heartrate,sysbp,diasbp,meanbp,resprate,tempc,spo2,urineoutput,dobutamine_dose,dopamine_dose,vasopressin_dose,phenylephrine_dose,epinephrine_dose,norepinephrine_dose
+unit,bpm,mmHg,mmHg,mmHg,breaths/min,°C,%,mL/h,mcg/kg/min,mcg/kg/min,units/min,mcg/kg/min,mcg/kg/min,mcg/kg/min
+normal_lower,60,90,60,70,12,36.1,95,35,0,0,0,0,0,0
+normal_upper,100,120,80,100,20,37.2,100,,0,0,0,0,0,0

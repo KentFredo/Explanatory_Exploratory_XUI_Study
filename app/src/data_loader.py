@@ -56,7 +56,7 @@ def load_patient_raw_data(file_path, patient_row_index):
                 patient.update_diagnosis(
                     {key: int(patient_row[diagnosis_column])})
 
-        lab_columns = [col.replace("_count", "").replace("_max", "").replace("_min", "").replace("_slope", "")
+        lab_columns = [col.replace("_count", "").replace("_max", "").replace("_min", "").replace("_slope", "").replace("_mean", "")
                        for col in patient_row.index if "_count" in col]
 
         lab_data = []
@@ -65,6 +65,7 @@ def load_patient_raw_data(file_path, patient_row_index):
             if f"{lab}_count" in patient_row.index:
                 lab_data.append({
                     "count": float(patient_row.get(f"{lab}_count", float("nan"))),
+                    "mean": round(float(patient_row.get(f"{lab}_mean", float("nan"))), 2),
                     "max": round(float(patient_row.get(f"{lab}_max", float("nan"))), 2),
                     "min": round(float(patient_row.get(f"{lab}_min", float("nan"))), 2),
                     "slope": round(float(patient_row.get(f"{lab}_slope", float("nan"))), 2)
@@ -156,8 +157,37 @@ def load_shap_background_data(file_path_ml):
 @st.cache_data
 def load_feature_names(file_path):
     # Read only the header of the CSV
-    df = pd.read_csv(file_path, sep=",", header=0, encoding="utf-8")
+    df = pd.read_csv(file_path, sep=",", header=0,
+                     index_col=0, encoding="utf-8")
     return list(df.columns)
+
+
+@st.cache_data
+def load_feature_metadata(file_path: str) -> dict:
+    """
+    Reads a CSV file where the first column contains metadata labels (e.g. "unit",
+    "normal_lower", "normal_upper") and returns a dictionary mapping each feature to its metadata.
+
+    Example output:
+    {
+        'bicarbonate_mean': {
+            'unit': 'mEq/L',
+            'normal_lower': 22,
+            'normal_upper': 26
+        },
+        ...
+    }
+    """
+    df = pd.read_csv(file_path, header=0, index_col=0, encoding="utf-8")
+
+    feature_metadata = {
+        feature: {
+            "unit": df.loc["unit", feature],
+            "normal_lower": df.loc["normal_lower", feature],
+            "normal_upper": df.loc["normal_upper", feature]
+        } for feature in df.columns
+    }
+    return feature_metadata
 
 
 @st.cache_data
@@ -176,19 +206,30 @@ def load_patient_data(study_xui_selection, current_patient_index):
         current_dir, "../data", "feature_mapping_timeseries.csv"))
     file_path_patient_base = os.path.normpath(os.path.join(
         current_dir, "../data", "patient_base_statistics.csv"))
-    file_path_global_feature_importance = os.path.normpath(os.path.join(
-        current_dir, "../data", "global_feature_importance.csv"))
-
-    if study_xui_selection == 0:  # Explanatory
+    file_path_global_feature_importance_static = os.path.normpath(os.path.join(
+        current_dir, "../data", "global_static_importance.npy"))
+    file_path_global_feature_importance_timeseries = os.path.normpath(os.path.join(
+        current_dir, "../data", "global_timeseries_importance.npy"))
+    if study_xui_selection == 3:  # Training Patient
+        patient_row_index = 6
+    elif study_xui_selection == 0:  # Explanatory XUI
         if current_patient_index < 3:
-            patient_row_index = current_patient_index
-        else:
+            # If patient_order = 0, use 1-3 patients
+            if st.session_state.patient_order == 0:
+                patient_row_index = current_patient_index
+            # If patient_order = 1, use next 4-6 patients
+            elif st.session_state.patient_order == 1:
+                patient_row_index = current_patient_index + 3
+        else:  # Exploratroy XUI
             return None  # All explanatory patients loaded
     else:  # Exploratory
         if current_patient_index < 3:
-            # Adjust the index for exploratory patients
-            exploratory_index = current_patient_index + 3
-            patient_row_index = exploratory_index
+            if st.session_state.patient_order == 0:
+                # Adjust the index for exploratory patients
+                exploratory_index = current_patient_index + 3
+                patient_row_index = exploratory_index
+            elif st.session_state.patient_order == 1:
+                patient_row_index = current_patient_index
         else:
             return None  # All exploratory patients loaded
 
@@ -206,6 +247,16 @@ def load_patient_data(study_xui_selection, current_patient_index):
     background_static, background_timeseries = load_shap_background_data(
         file_path_ml)
 
+    feature_metadata_static = load_feature_metadata(
+        file_path_static_feature_names)
+    feature_metadata_timeseries = load_feature_metadata(
+        file_path_timeseries_feature_names)
+    # Merge the two dictionaries into one.
+    # If there are duplicate keys, the timeseries keys will overwrite the static ones.
+    combined_feature_metadata = {
+        **feature_metadata_static, **feature_metadata_timeseries}
+    st.session_state.feature_metadata = combined_feature_metadata
+
     # Load the patient base statistics
     patient_base = PatientBase()
     patient_base_df = pd.read_csv(
@@ -222,26 +273,6 @@ def load_patient_data(study_xui_selection, current_patient_index):
 
     patient_base.set_dataframe(patient_base_df)
 
-    # Load the global feature importance
-    global_feature_importance_df = pd.read_csv(
-        file_path_global_feature_importance,
-        sep=",",
-        header=0,
-        index_col=0,
-        encoding="utf-8"
-    )
-
-    # Reset index to move 'feature' from index to a column
-    global_feature_importance_df = global_feature_importance_df.reset_index()
-
-    # Sort by SHAP value
-    global_feature_importance_df = global_feature_importance_df.sort_values(
-        by="mean_shap_value", ascending=False
-    )
-
-    # Save to session state
-    st.session_state.global_feature_importance = global_feature_importance_df
-
     # Save all gathered data into the session state
     st.session_state.patient = patient
     st.session_state.patient.update_ml_data(patient_ml_data)
@@ -253,6 +284,37 @@ def load_patient_data(study_xui_selection, current_patient_index):
 
     # Create the counterfactual copy of the patient as initial state
     st.session_state.counterfactual_patient = deepcopy(patient)
+
+    # Load the aggregated SHAP values from the .npy files
+    global_static_importance = np.load(
+        file_path_global_feature_importance_static)
+    global_timeseries_importance = np.load(
+        file_path_global_feature_importance_timeseries)
+
+    # Create a DataFrame for the static features using the corresponding session state names.
+    df_static = pd.DataFrame({
+        "feature": st.session_state.static_feature_names,
+        "mean_shap_value": global_static_importance,
+        "input_type": "static"
+    })
+
+    # Create a DataFrame for the timeseries features using the corresponding session state names.
+    df_timeseries = pd.DataFrame({
+        "feature": st.session_state.timeseries_feature_names,
+        "mean_shap_value": global_timeseries_importance,
+        "input_type": "timeseries"
+    })
+
+    # Combine the two DataFrames into one
+    global_feature_importance_df = pd.concat(
+        [df_static, df_timeseries], ignore_index=True)
+
+    # Sort the DataFrame by mean_shap_value in descending order
+    global_feature_importance_df = global_feature_importance_df.sort_values(
+        by="mean_shap_value", ascending=False)
+
+    # Save the combined and sorted global feature importance DataFrame to session state
+    st.session_state.global_feature_importance = global_feature_importance_df
 
 
 if __name__ == "__main__":
@@ -266,3 +328,5 @@ if __name__ == "__main__":
     print(st.session_state.patient.get_ml_data())
     print(
         f"Patient age min {st.session_state.patient_base.get_feature_value("age", "min")}")
+
+    print(st.session_state.feature_metadata)

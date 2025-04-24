@@ -1,6 +1,5 @@
 import streamlit as st
 import time
-import streamlit.components.v1 as components
 
 
 def explanation_satisfaction_form():
@@ -35,9 +34,13 @@ def explanation_satisfaction_form():
     with st.form(key="explanation_satisfaction_form"):
         # Iterate over each question, using columns for a side-by-side layout.
         for q_number, question_text in questions.items():
-            col1, col2 = st.columns([3, 2])  # Adjust the ratio as needed
+            col1, left_label_col, col2, right_label_col = st.columns([
+                                                                     3, 0.4, 2, 0.4])
             with col1:
                 st.write(f"**{q_number}.** {question_text}")
+            with left_label_col:
+                st.markdown(
+                    f"<p style='font-size:0.7em; color:grey; font-style:italic; margin:0;'>Strongly Disagree</p>", unsafe_allow_html=True)
             with col2:
                 responses[q_number] = st.radio(
                     label=f"{q_number}",
@@ -49,6 +52,9 @@ def explanation_satisfaction_form():
                 )
             st.markdown(
                 "<hr style='margin-top: 0px; margin-bottom: 0px;'>", unsafe_allow_html=True)
+            with right_label_col:
+                st.markdown(
+                    f"<p style='font-size:0.7em; color:grey; font-style:italic; text-align:left; margin:0;'>Strongly Agree</p>", unsafe_allow_html=True)
 
         submit = st.form_submit_button("Submit")
         if submit:
@@ -65,18 +71,9 @@ def explanation_satisfaction_form():
                 }
                 key = f"explan_sat_{st.session_state.get('study_xui_selection', 'default')}"
                 st.session_state.xui_evaluation_results[key] = evaluation_data
-                st.success(
-                    "Your responses have been saved for the Explanation Satisfaction Scale!")
                 st.session_state.explanation_satisfaction_done = True
-                time.sleep(3)
-                components.html(
-                    """
-                    <script>
-                    window.parent.scrollTo({ top: 0, behavior: 'smooth' });
-                    </script>
-                    """,
-                    height=0
-                )
+                # Set a flag to trigger scrolling on the next render
+                st.session_state.trigger_scroll = True
                 st.rerun()
 
 
@@ -114,9 +111,13 @@ def system_usability_form():
     with st.form(key="system_usability_form"):
         # Iterate over each question, using columns for a side-by-side layout.
         for q_number, question_text in questions.items():
-            col1, col2 = st.columns([3, 2])  # Adjust the ratio as needed
+            col1, left_label_col, col2, right_label_col = st.columns([
+                                                                     3, 0.4, 2, 0.4])
             with col1:
                 st.write(f"**{q_number}.** {question_text}")
+            with left_label_col:
+                st.markdown(
+                    f"<p style='font-size:0.7em; color:grey; font-style:italic; margin:0;'>Strongly Disagree</p>", unsafe_allow_html=True)
             with col2:
                 responses[q_number] = st.radio(
                     label=f"{q_number}",
@@ -128,6 +129,9 @@ def system_usability_form():
                 )
             st.markdown(
                 "<hr style='margin-top: 0px; margin-bottom: 0px;'>", unsafe_allow_html=True)
+            with right_label_col:
+                st.markdown(
+                    f"<p style='font-size:0.7em; color:grey; font-style:italic; text-align:left; margin:0;'>Strongly Agree</p>", unsafe_allow_html=True)
 
         submit = st.form_submit_button("Submit")
         if submit:
@@ -146,17 +150,8 @@ def system_usability_form():
                 key = f"sus_{st.session_state.get('study_xui_selection', 'default')}"
                 st.session_state.xui_evaluation_results[key] = evaluation_data
                 st.session_state.system_usability_done = True
-                st.success(
-                    "Your responses have been saved for the System Usability Scale (SUS)!")
-                time.sleep(3)
-                components.html(
-                    """
-                    <script>
-                    window.parent.scrollTo({ top: 0, behavior: 'smooth' });
-                    </script>
-                    """,
-                    height=0
-                )
+                # Set a flag to trigger scrolling on the next render
+                st.session_state.trigger_scroll = True
                 st.rerun()
 
 
@@ -168,77 +163,76 @@ def nasa_tlx_form():
         "You are asked to reflect on your experience and rate each aspect accordingly. There are no right or wrong answers—please respond based on your personal perception."
     )
 
-    # Define aspects with description and explanation for tooltip
+    # Define aspects with descriptions, explanations, and explicit left/right labels
     aspects = {
         "Mental Demand": {
-            "desc": "Low = low mental demand, High = high mental demand",
-            "explanation": "Measures the mental effort required by the task."
+            "left_label": "Low cognitive load",
+            "right_label": "High cognitive load",
+            "explanation": (
+                "Evaluates the cognitive processing required during the task, including aspects such as attention, memory, decision-making, and problem solving. "
+                "A low rating indicates that the task required little mental effort, while a high rating suggests that it demanded substantial cognitive resources."
+            )
         },
         "Physical Demand": {
-            "desc": "Low = low physical demand, High = high physical demand",
-            "explanation": "Measures the physical effort required by the task."
+            "left_label": "Low physical activity",
+            "right_label": "High physical activity",
+            "explanation": (
+                "Measures the degree of physical effort needed to complete the task, such as muscle exertion, manual dexterity, and overall bodily movement. "
+                "A low score implies that only minimal physical work was involved, whereas a high score points to significant physical exertion."
+            )
         },
         "Temporal Demand": {
-            "desc": "Low = low time pressure, High = high time pressure",
-            "explanation": "Measures the time pressure felt during the task."
+            "left_label": "Ample time",
+            "right_label": "High time pressure",
+            "explanation": (
+                "Assesses the time pressure experienced during the task. "
+                "A low score indicates that you had sufficient time to complete the task without feeling rushed, while a high score reflects a situation where time was scarce and deadlines were pressing."
+            )
         },
         "Performance": {
-            "desc": "Good = good performance, Poor = poor performance",
-            "explanation": "Assesses how successful you were in accomplishing the task."
+            "left_label": "Good performance",
+            "right_label": "Poor performance",
+            "explanation": (
+                "Reflects your subjective evaluation of how well you accomplished the task objectives. "
+                "A good rating means you believe you performed effectively and met the task requirements, whereas a poor rating suggests that you feel your performance did not meet expectations."
+            )
         },
         "Effort": {
-            "desc": "Low = low effort, High = high effort",
-            "explanation": "Measures how hard you had to work to achieve your performance."
+            "left_label": "Little effort",
+            "right_label": "Intense effort",
+            "explanation": (
+                "Quantifies the amount of work or exertion you invested to achieve your performance. "
+                "A low rating implies the task required minimal effort, while a high rating indicates that you had to work very hard to complete it."
+            )
         },
         "Frustration": {
-            "desc": "Low = low frustration, High = high frustration",
-            "explanation": "Measures your level of stress or frustration during the task."
+            "left_label": "Calm / unperturbed",
+            "right_label": "High frustration / stress",
+            "explanation": (
+                "Measures the level of stress, irritation, or frustration experienced during the task. "
+                "A low score suggests that the task was completed in a calm state, whereas a high score indicates significant emotional discomfort or stress during the process."
+            )
         }
     }
 
-    pairs = [
-        ("Effort", "Performance"),
-        ("Temporal Demand", "Frustration"),
-        ("Temporal Demand", "Effort"),
-        ("Physical Demand", "Frustration"),
-        ("Performance", "Frustration"),
-        ("Physical Demand", "Temporal Demand"),
-        ("Physical Demand", "Performance"),
-        ("Temporal Demand", "Mental Demand"),
-        ("Frustration", "Effort"),
-        ("Performance", "Mental Demand"),
-        ("Performance", "Temporal Demand"),
-        ("Mental Demand", "Effort"),
-        ("Mental Demand", "Physical Demand"),
-        ("Effort", "Physical Demand"),
-        ("Frustration", "Mental Demand")
-    ]
-
     ratings = {}
-    pairwise_selections = {}
 
-    # Wrap all inputs in one form
     with st.form(key="nasa_tlx_form"):
         st.subheader("Rate each Workload Aspect")
         st.write(
-            "Use the sliders below to rate each workload aspect. The scale goes from 0 to 100 in increments of 5.")
+            "Use the sliders below to rate each workload aspect. The scale goes from 0 to 100 in increments of 5."
+        )
 
         for aspect, details in aspects.items():
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                # Display the aspect name with a tooltip question mark
+            # Four columns: Aspect name/tooltip, left label, slider, right label
+            col_aspect, col_left, col_slider, col_right = st.columns([
+                                                                     2, 0.9, 4, 0.9])
+            with col_aspect:
+                st.markdown(f"**{aspect}**", help=details["explanation"])
+            with col_left:
                 st.markdown(
-                    f"**{aspect}** "
-                    f"<span style='display:inline-block; width:16px; height:16px; background-color:grey; color:white; border-radius:50%; text-align:center; line-height:16px; font-size:10px; margin-left:4px;' "
-                    f"title='{details['explanation']}'>&#63;</span>",
-                    unsafe_allow_html=True,
-                )
-                # Display the description in grey, italic, 0.7em font size
-                st.markdown(
-                    f"<p style='color:grey; font-style:italic; font-size:0.7em; margin: 0;'>{details['desc']}</p>",
-                    unsafe_allow_html=True,
-                )
-            with col2:
+                    f"<p style='font-size:0.7em; color:grey; font-style:italic; margin:0;'>{details['left_label']}</p>", unsafe_allow_html=True)
+            with col_slider:
                 ratings[aspect] = st.slider(
                     label=aspect,
                     min_value=0,
@@ -248,57 +242,27 @@ def nasa_tlx_form():
                     label_visibility="collapsed",
                     key=f"nasa_{aspect.replace(' ', '_').lower()}"
                 )
+            with col_right:
+                st.markdown(
+                    f"<p style='font-size:0.7em; color:grey; font-style:italic; text-align:right; margin:0;'>{details['right_label']}</p>", unsafe_allow_html=True)
 
-        st.subheader("Pairwise Comparisons")
-        st.write(
-            "Below, select the factor that had a greater impact on your experience for each pair.")
-
-        # Create a grid layout with 3 pairs per row
-        for idx in range(0, len(pairs), 3):
-            cols = st.columns(3)
-            for j, col in enumerate(cols):
-                pair_index = idx + j
-                if pair_index < len(pairs):
-                    option1, option2 = pairs[pair_index]
-                    with col:
-                        selection = st.radio(
-                            label=f"Pair {pair_index+1}: {option1} vs {option2}",
-                            options=[option1, option2],
-                            key=f"pairwise_{pair_index+1}",
-                            horizontal=False,
-                            index=None
-                        )
-                        pairwise_selections[f"Pair {pair_index+1}"] = selection
         submit = st.form_submit_button("Submit")
 
-    # Process form data after submission (outside the form)
     if submit:
-        # Validate that all pairwise comparisons have been answered
-        missing_pairs = [
-            pair for pair, selection in pairwise_selections.items() if selection is None]
-        if missing_pairs:
-            st.error("Please fill out the form completely.")
+        missing = [a for a, r in ratings.items() if r is None]
+        if missing:
+            st.error("Please fill out all ratings before submitting.")
         else:
+            key = f"nasa_tlx_{st.session_state.get('study_xui_selection', 'default')}"
             evaluation_data = {
                 "study_xui_selection": st.session_state.get("study_xui_selection", None),
                 "ratings": ratings,
-                "pairwise_selections": pairwise_selections,
             }
-            key = f"nasa_tlx_{st.session_state.get('study_xui_selection', 'default')}"
-            if "xui_evaluation_results" not in st.session_state:
-                st.session_state.xui_evaluation_results = {}
+            st.session_state.xui_evaluation_results = st.session_state.get(
+                "xui_evaluation_results", {})
             st.session_state.xui_evaluation_results[key] = evaluation_data
             st.session_state.nasa_tlx_done = True
-            st.success("Your NASA TLX evaluation has been saved!")
-            time.sleep(3)
-            components.html(
-                """
-                <script>
-                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
-                </script>
-                """,
-                height=0
-            )
+            st.session_state.trigger_scroll = True
             st.rerun()
 
 
@@ -334,9 +298,13 @@ def trust_evaluation_form():
     with st.form(key="trust_scale_form"):
         # Iterate over each question, using columns for a side-by-side layout.
         for q_number, question_text in questions.items():
-            col1, col2 = st.columns([3, 2])  # Adjust the ratio as needed
+            col1, left_label_col, col2, right_label_col = st.columns([
+                                                                     3, 0.4, 2, 0.4])
             with col1:
                 st.write(f"**{q_number}.** {question_text}")
+            with left_label_col:
+                st.markdown(
+                    f"<p style='font-size:0.7em; color:grey; font-style:italic; margin:0;'>Strongly Disagree</p>", unsafe_allow_html=True)
             with col2:
                 responses[q_number] = st.radio(
                     label=f"{q_number}",
@@ -348,6 +316,9 @@ def trust_evaluation_form():
                 )
             st.markdown(
                 "<hr style='margin-top: 0px; margin-bottom: 0px;'>", unsafe_allow_html=True)
+            with right_label_col:
+                st.markdown(
+                    f"<p style='font-size:0.7em; color:grey; font-style:italic; text-align:left; margin:0;'>Strongly Agree</p>", unsafe_allow_html=True)
 
         submit = st.form_submit_button("Submit")
         if submit:
@@ -364,16 +335,7 @@ def trust_evaluation_form():
                 }
                 key = f"trust_scale_{st.session_state.get('study_xui_selection', 'default')}"
                 st.session_state.xui_evaluation_results[key] = evaluation_data
-                st.success(
-                    "Your responses have been saved for the Trust Scale!")
                 st.session_state.trust_evaluation_done = True
-                time.sleep(3)
-                components.html(
-                    """
-                    <script>
-                    window.parent.scrollTo({ top: 0, behavior: 'smooth' });
-                    </script>
-                    """,
-                    height=0
-                )
+                # Set a flag to trigger scrolling on the next render
+                st.session_state.trigger_scroll = True
                 st.rerun()
