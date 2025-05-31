@@ -90,15 +90,27 @@ def display_exploratory_patient_prediction():
             st.session_state.exploratory_view = view
 
         def shuffel_button_positions():
+            if st.session_state.demo_mode_active:
+                # The desired fixed order for demo mode
+                demo_order = [1, 2, 3, 4]
 
-            # Shuffle the button positions
-            random.seed(st.session_state.random_seed)
-            shuffled_buttons = buttons.copy()
-            random.shuffle(shuffled_buttons)
-            patient_id = st.session_state.current_patient_index
-            st.session_state.button_orders[patient_id] = [
-                btn["args"][0] for btn in shuffled_buttons
-            ]
+                ordered_buttons = []
+                for btn_id in demo_order:
+                    # Find and append the button dict whose args[0] matches btn_id
+                    for btn in buttons:
+                        if btn["args"][0] == btn_id:
+                            ordered_buttons.append(btn)
+                            break
+                return ordered_buttons
+            else:
+                # Shuffle the button positions
+                random.seed(st.session_state.random_seed)
+                shuffled_buttons = buttons.copy()
+                random.shuffle(shuffled_buttons)
+                patient_id = st.session_state.current_patient_index
+                st.session_state.button_orders[patient_id] = [
+                    btn["args"][0] for btn in shuffled_buttons
+                ]
             return shuffled_buttons
 
         buttons = [

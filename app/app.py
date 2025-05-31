@@ -27,6 +27,12 @@ if "color_non_survivor" not in st.session_state:
 if "random_seed" not in st.session_state:
     st.session_state.random_seed = random.randint(1, 10000)
 
+# App mode selection
+if "demo_mode_active" not in st.session_state:
+    st.session_state.demo_mode_active = False
+if "study_mode_active" not in st.session_state:
+    st.session_state.study_mode_active = False
+
 # Initialize session state on first run
 if "consent_given" not in st.session_state:
     st.session_state.consent_given = False
@@ -226,6 +232,10 @@ with st.sidebar:
         if not st.session_state.training_patient_loaded:
             data_loader.load_patient_data(3, 0)
             # Calculate the risk for the patient
+            print("Checking if patient data is loaded...")
+            if st.session_state.patient is None:
+                st.write("No patient data loaded. Please check the data loader.")
+                return
             risk_array = st.session_state.sepsis_prediction_model.predict_sepsis_mortality_risk()
             st.session_state.patient_risk = round(risk_array[0, 0], 2)
 
@@ -243,8 +253,6 @@ with st.sidebar:
 
             # Set the training patient loaded flag to True
             st.session_state.training_patient_loaded = True
-
-        # Functions used within the sidebar for the study flow
 
     def next_study_patient():
         if not st.session_state.patient_evaluation_running and not st.session_state.patient_data_tab_evaluation_running and not st.session_state.patient_prediction_tab_evaluation_running:
@@ -376,130 +384,216 @@ with st.sidebar:
     def end_evaluation_study():
         st.session_state.end_evaluation_study_running = True
 
-    # Determine the defaults for each pill based on the current session state.
-    explanatory_default = 0 if st.session_state.study_xui_selection == 0 else None
-    exploratory_default = 1 if st.session_state.study_xui_selection == 1 else None
+    if st.session_state.study_mode_active and not st.session_state.demo_mode_active:
 
-    st.write("XUI Study Selection")
-    # Create two columns for the two pill widgets.
-    explanatory_pill_col, exploratory_pill_col = st.columns(2)
+        # Determine the defaults for each pill based on the current session state.
+        explanatory_default = 0 if st.session_state.study_xui_selection == 0 else None
+        exploratory_default = 1 if st.session_state.study_xui_selection == 1 else None
 
-    with explanatory_pill_col:
-        study_explanatory_selection = st.pills(
-            label="Explanatory XUI",
-            label_visibility='collapsed',
-            options=[0],
-            format_func=lambda _: "Explanatory XUI",
-            selection_mode="single",
-            default=explanatory_default,
-            disabled=st.session_state.xui_study_running or st.session_state.study_xui_selection == 1 or st.session_state.explanatory_xui_study_finished or not st.session_state.training_finished
-        )
+        st.write("XUI Study Selection")
+        # Create two columns for the two pill widgets.
+        explanatory_pill_col, exploratory_pill_col = st.columns(2)
 
-    with exploratory_pill_col:
-        study_exploratory_selection = st.pills(
-            label="Exploratory XUI",
-            label_visibility='collapsed',
-            options=[1],
-            format_func=lambda _: "Exploratory XUI",
-            selection_mode="single",
-            default=exploratory_default,
-            disabled=st.session_state.xui_study_running or st.session_state.study_xui_selection == 0 or st.session_state.exploratory_xui_study_finished or not st.session_state.training_finished
-        )
+        with explanatory_pill_col:
+            study_explanatory_selection = st.pills(
+                label="Explanatory XUI",
+                label_visibility='collapsed',
+                options=[0],
+                format_func=lambda _: "Explanatory XUI",
+                selection_mode="single",
+                default=explanatory_default,
+                disabled=st.session_state.xui_study_running or st.session_state.study_xui_selection == 1 or st.session_state.explanatory_xui_study_finished or not st.session_state.training_finished
+            )
 
-    # Update the shared variable based on which pill is currently active.
-    new_selection = None
-    if study_explanatory_selection is not None:
-        new_selection = 0
-    elif study_exploratory_selection is not None:
-        new_selection = 1
+        with exploratory_pill_col:
+            study_exploratory_selection = st.pills(
+                label="Exploratory XUI",
+                label_visibility='collapsed',
+                options=[1],
+                format_func=lambda _: "Exploratory XUI",
+                selection_mode="single",
+                default=exploratory_default,
+                disabled=st.session_state.xui_study_running or st.session_state.study_xui_selection == 0 or st.session_state.exploratory_xui_study_finished or not st.session_state.training_finished
+            )
 
-    # If the selection has changed, update the session state accordingly.
-    if new_selection != st.session_state.study_xui_selection:
-        st.session_state.study_xui_selection = new_selection
-        if new_selection == 0:
-            st.session_state.current_patient_index = st.session_state.explanatory_xui_finished_patients
-        elif new_selection == 1:
-            st.session_state.current_patient_index = st.session_state.exploratory_xui_finished_patients
-        st.rerun()
+        # Update the shared variable based on which pill is currently active.
+        new_selection = None
+        if study_explanatory_selection is not None:
+            new_selection = 0
+        elif study_exploratory_selection is not None:
+            new_selection = 1
 
-    def build_patient_overview(finished_patients, running_patient=False):
-        overview_string = ""
-        unfinished = f":blue-badge[:material/personal_injury: "
-        finished = f":green-badge[:material/personal_injury: "
-        running = f":red-badge[:material/personal_injury: "
+        # If the selection has changed, update the session state accordingly.
+        if new_selection != st.session_state.study_xui_selection:
+            st.session_state.study_xui_selection = new_selection
+            if new_selection == 0:
+                st.session_state.current_patient_index = st.session_state.explanatory_xui_finished_patients
+            elif new_selection == 1:
+                st.session_state.current_patient_index = st.session_state.exploratory_xui_finished_patients
+            st.rerun()
 
-        for x in range(1, finished_patients+1):
-            overview_string += finished + str(x) + "] "
-        for x in range(finished_patients+1, 3+1):
-            if running_patient and x == finished_patients + 1:
-                overview_string += running + str(x) + "] "
-            else:
-                overview_string += unfinished + str(x) + "] "
+        def build_patient_overview(finished_patients, running_patient=False):
+            overview_string = ""
+            unfinished = f":blue-badge[:material/personal_injury: "
+            finished = f":green-badge[:material/personal_injury: "
+            running = f":red-badge[:material/personal_injury: "
 
-        return overview_string.strip()
+            for x in range(1, finished_patients+1):
+                overview_string += finished + str(x) + "] "
+            for x in range(finished_patients+1, 3+1):
+                if running_patient and x == finished_patients + 1:
+                    overview_string += running + str(x) + "] "
+                else:
+                    overview_string += unfinished + str(x) + "] "
 
-    pat_overview_col1, pat_overview_col2 = st.columns(2)
-    with pat_overview_col1:
-        st.write("Finished Patients Explanatory XUI")
-        generated_string = build_patient_overview(
-            st.session_state.explanatory_xui_finished_patients,
-            (st.session_state.patient_evaluation_running and st.session_state.study_xui_selection == 0)
-        )
-        st.markdown(generated_string)
+            return overview_string.strip()
 
-    with pat_overview_col2:
-        st.write("Finished Patients Exploratory XUI")
-        generated_string = build_patient_overview(
-            st.session_state.exploratory_xui_finished_patients,
-            (st.session_state.patient_evaluation_running and st.session_state.study_xui_selection == 1))
-        st.markdown(generated_string)
+        pat_overview_col1, pat_overview_col2 = st.columns(2)
+        with pat_overview_col1:
+            st.write("Finished Patients Explanatory XUI")
+            generated_string = build_patient_overview(
+                st.session_state.explanatory_xui_finished_patients,
+                (st.session_state.patient_evaluation_running and st.session_state.study_xui_selection == 0)
+            )
+            st.markdown(generated_string)
 
-    st.divider()
+        with pat_overview_col2:
+            st.write("Finished Patients Exploratory XUI")
+            generated_string = build_patient_overview(
+                st.session_state.exploratory_xui_finished_patients,
+                (st.session_state.patient_evaluation_running and st.session_state.study_xui_selection == 1))
+            st.markdown(generated_string)
 
-    st.markdown("## Next Action:")
-    # Button logic:
-    # This is the main study flow button. It shows either "Load next Patient" or "Evaluate Patient" depending on the state of the patient evaluation.
-    if st.session_state.patient_evaluation_running:
-        if st.button("Evaluate Patient",
-                     type="primary",):
-            # Show dialog when button is clicked
-            st.session_state.show_evaluation_dialog = True
-            evaluate_patient()
-    elif not st.session_state.training_patient_loaded:
-        st.button(
-            "Load Training Patient",
-            type="secondary",
-            help="Load the training patient",
-            key="load_training_patient",
-            on_click=load_training_patient,
-            disabled=st.session_state.training_patient_loaded is True,
-        )
-    elif st.session_state.current_patient_index < 3:
-        st.button(
-            "Load next Patient",
-            type="secondary",
-            help="Start the next patient study",
-            key="load_next_patient",
-            on_click=next_study_patient,
-            disabled=st.session_state.study_xui_selection is None or st.session_state.current_patient_index >= 3 or not st.session_state.training_finished,
-        )
-    elif not st.session_state.explanatory_xui_study_finished or not st.session_state.exploratory_xui_study_finished:
-        st.button(
-            "Evaluate XUI",
-            type="secondary",
-            help="Evaluate the XUI",
-            key="evaluate_xui",
-            on_click=evaluate_xui)
+        st.divider()
+
+        st.markdown("## Next Action:")
+        # Button logic:
+        # This is the main study flow button. It shows either "Load next Patient" or "Evaluate Patient" depending on the state of the patient evaluation.
+        if st.session_state.patient_evaluation_running:
+            if st.button("Evaluate Patient",
+                        type="primary",):
+                # Show dialog when button is clicked
+                st.session_state.show_evaluation_dialog = True
+                evaluate_patient()
+        elif not st.session_state.training_patient_loaded:
+            st.button(
+                "Load Training Patient",
+                type="secondary",
+                help="Load the training patient",
+                key="load_training_patient",
+                on_click=load_training_patient,
+                disabled=st.session_state.training_patient_loaded is True,
+            )
+        elif st.session_state.current_patient_index < 3:
+            st.button(
+                "Load next Patient",
+                type="secondary",
+                help="Start the next patient study",
+                key="load_next_patient",
+                on_click=next_study_patient,
+                disabled=st.session_state.study_xui_selection is None or st.session_state.current_patient_index >= 3 or not st.session_state.training_finished,
+            )
+        elif not st.session_state.explanatory_xui_study_finished or not st.session_state.exploratory_xui_study_finished:
+            st.button(
+                "Evaluate XUI",
+                type="secondary",
+                help="Evaluate the XUI",
+                key="evaluate_xui",
+                on_click=evaluate_xui)
+        else:
+            st.button(
+                "Start End Evaluation",
+                type="secondary",
+                help="Start the end evaluation of this study",
+                key="end_evaluation_study",
+                on_click=end_evaluation_study,
+                disabled=st.session_state.end_evaluation_study_done is True
+            )
+    elif st.session_state.demo_mode_active and not st.session_state.study_mode_active:
+        # ─────────────────────────────────────────────────────────────────────────────
+        # Demo‐Mode Sidebar Buttons
+        # ─────────────────────────────────────────────────────────────────────────────
+        st.write("User Interface Selection")
+        
+        # Determine which demo‐page is currently selected (default to Patient Data)
+        if "demo_page" not in st.session_state:
+            st.session_state.demo_page = "patient_data"
+    
+        if st.button(
+            "Patient Data", 
+            use_container_width=True, 
+            type="secondary" if st.session_state.demo_page != "patient_data" else "primary",
+        ):
+            st.session_state.demo_page = "patient_data"
+            st.rerun()
+
+        if st.button(
+            "Explanatory XUI", 
+            use_container_width=True, 
+            type="secondary" if st.session_state.demo_page != "explanatory" else "primary",
+        ):
+            st.session_state.demo_page = "explanatory"
+            st.rerun()
+
+        if st.button(
+            "Exploratory XUI", 
+            use_container_width=True, 
+            type="secondary" if st.session_state.demo_page != "exploratory" else "primary",
+        ):
+            st.session_state.demo_page = "exploratory"
+            st.rerun()
+
+        st.sidebar.markdown("""---""")
+
+        coldum1, exit_col, coldum2 = st.sidebar.columns([0.5, 2, 0.5])
+        with exit_col:
+            if st.button(
+                "Exit Demo Mode",
+                type="secondary",
+                help="Exit the demo mode and return to the mode selection page.",
+                key="exit_demo_mode",
+            ):
+                st.session_state.training_patient_loaded = False
+                st.session_state.demo_mode_active = False
+                st.session_state.study_mode_active = False
+                st.session_state.demo_page = None
+
+                st.session_state.patient = None
+                st.session_state.shap_values = None
+                st.session_state.shap_group_contributions = None
+                st.session_state.patient_risk = 0.0
+                st.session_state.scenario_risk = 0.0
+                st.session_state.counterfactual_patient = None
+                st.session_state.counterfactual_data_changed = False
+                st.rerun()
+
     else:
-        st.button(
-            "Start End Evaluation",
-            type="secondary",
-            help="Start the end evaluation of this study",
-            key="end_evaluation_study",
-            on_click=end_evaluation_study,
-            disabled=st.session_state.end_evaluation_study_done is True
-        )
-
+        def set_demo_mode():
+            st.session_state.demo_mode_active = True
+            st.session_state.study_mode_active = False
+            load_training_patient()
+        def set_study_mode():
+            st.session_state.study_mode_active = True
+            st.session_state.demo_mode_active = False
+        # If no study mode is active, we show the mode selection page
+        st.write("Mode Selection")
+        study_mode_col, demo_mode_col = st.columns(2)
+        with study_mode_col:
+            st.button(
+                "Study Mode",
+                type="secondary",
+                help="Start the study mode",
+                key="start_study_mode",
+                on_click=set_study_mode,
+            )
+        with demo_mode_col:
+            st.button(
+                "Demo Mode",
+                type="secondary",
+                help="Start the demo mode",
+                key="start_demo_mode",
+                on_click=set_demo_mode,
+            )
 
 #####################################################################################
 ### Define pages and navigation                                                   ###

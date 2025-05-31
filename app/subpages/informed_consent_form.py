@@ -71,11 +71,6 @@ def show_informed_consent_modal():
     - **Risks**: The study involves minimal risk. You may experience slight fatigue due to the session duration.  
     - **Benefits**: While there is no direct personal benefit, your participation will help improve clinical decision support tools and contribute to research on explainable AI in critical care.
 
-    ##### Contact  
-    If you have any questions or concerns about the study, please contact:  
-    **Kent Fredriksdotter**  
-    Email: *kent.fredriksdotter@stud.ki.se*
-
     ---
 
     ##### Consent  

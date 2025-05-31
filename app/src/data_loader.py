@@ -94,6 +94,8 @@ def load_patient_raw_data(file_path, patient_row_index):
                 patient_row[f"{vasopressor}_{i}"]) else None for i in range(24)]
         patient.update_vasopressor(pd.DataFrame(vasopressor_data))
 
+        print(f"Loaded patient data for row index {patient_row_index} from {file_path}")
+        print(patient.to_dict())
         return patient
 
     except FileNotFoundError:
@@ -190,11 +192,11 @@ def load_feature_metadata(file_path: str) -> dict:
     return feature_metadata
 
 
-@st.cache_data
 def load_patient_data(study_xui_selection, current_patient_index):
     """
     Loads patient data based on study selection and patient index.
     """
+    print("Loading patient data...")
     current_dir = os.path.dirname(os.path.realpath(__file__))
     file_path_raw = os.path.normpath(os.path.join(
         current_dir, "../data", "patient_raw_data.csv"))
@@ -235,10 +237,11 @@ def load_patient_data(study_xui_selection, current_patient_index):
 
     # Load the patient data
     patient = load_patient_raw_data(file_path_raw, patient_row_index)
+    print(f"Loaded patient data for row index {patient_row_index} from {file_path_raw}")
+    print(patient.to_dict())
     static, timeseries, y = load_patient_ml_data(
         file_path_ml, patient_row_index)
     patient_ml_data = {"static": static, "timeseries": timeseries, "y": y}
-
     # Load the feature mapping list
     static_feature_names = load_feature_names(file_path_static_feature_names)
     timeseries_feature_names = load_feature_names(
@@ -315,6 +318,9 @@ def load_patient_data(study_xui_selection, current_patient_index):
 
     # Save the combined and sorted global feature importance DataFrame to session state
     st.session_state.global_feature_importance = global_feature_importance_df
+
+    print("Checking at the end of load_patient_data:")
+    print(st.session_state.patient.to_dict())
 
 
 if __name__ == "__main__":
